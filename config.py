@@ -1,7 +1,11 @@
 """통신선로 설계 프로그램 설정"""
 import os
+from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# .env 파일 로드
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 DB_PATH = os.path.join(BASE_DIR, "telecom_design.db")
 
 # 간접비 비율
@@ -26,3 +30,9 @@ STATUS_COLORS = {
 
 # 요소 타입
 ELEMENT_TYPES = ["pole", "cable", "terminal", "house", "dropwire"]
+
+# AI 설정
+AI_MODEL = "claude-sonnet-4-20250514"
+AI_MAX_TOKENS = 4096
+AI_TEMPERATURE = 0.1
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

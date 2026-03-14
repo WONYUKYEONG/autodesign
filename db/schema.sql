@@ -98,7 +98,20 @@ CREATE TABLE IF NOT EXISTS work_orders (
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
--- 10. 작업 지시서 상세
+-- 10. AI 분석 이력
+CREATE TABLE IF NOT EXISTS ai_analysis_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER,
+    image_path TEXT NOT NULL,
+    prompt_used TEXT,
+    raw_response TEXT,
+    parsed_elements_json TEXT,
+    corrections_json TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+);
+
+-- 11. 작업 지시서 상세
 CREATE TABLE IF NOT EXISTS work_order_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     work_order_id INTEGER NOT NULL,

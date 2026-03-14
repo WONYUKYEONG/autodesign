@@ -7,11 +7,13 @@ from engine.cost_calculator import CostCalculator
 
 
 class ScenarioPanel(tk.LabelFrame):
-    def __init__(self, parent, canvas_view, result_view, on_status_update=None):
+    def __init__(self, parent, canvas_view, result_view,
+                 on_status_update=None, on_feedback=None):
         super().__init__(parent, text="시나리오", font=("맑은 고딕", 10, "bold"))
         self.canvas_view = canvas_view
         self.result_view = result_view
         self.on_status_update = on_status_update
+        self.on_feedback = on_feedback
 
         self.rule_engine = RuleEngine()
         self.cost_calc = CostCalculator()
@@ -31,6 +33,23 @@ class ScenarioPanel(tk.LabelFrame):
                   font=("맑은 고딕", 9)).pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="시나리오 실행", command=self.run_scenario,
                   font=("맑은 고딕", 9), bg="#4CAF50", fg="white").pack(side=tk.LEFT, padx=2)
+
+        # AI 피드백 버튼 (초기 비활성)
+        self.feedback_btn = tk.Button(
+            btn_frame, text="피드백 전송", command=self._send_feedback,
+            font=("맑은 고딕", 9), bg="#2196F3", fg="white",
+            state=tk.DISABLED,
+        )
+        self.feedback_btn.pack(side=tk.LEFT, padx=2)
+
+    def enable_feedback(self, enabled):
+        """피드백 버튼 활성화/비활성화"""
+        self.feedback_btn.config(state=tk.NORMAL if enabled else tk.DISABLED)
+
+    def _send_feedback(self):
+        """피드백 콜백 호출"""
+        if self.on_feedback:
+            self.on_feedback()
 
     def scan_damaged(self):
         self.damage_listbox.delete(0, tk.END)

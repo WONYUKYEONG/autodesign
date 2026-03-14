@@ -1,4 +1,4 @@
-"""엑셀 출력: 총괄표/내역서/일위대가표 3개 시트"""
+"""엑셀 출력: 총괄표/내역서/일위대가표 + AI 분석 결과"""
 from openpyxl import Workbook
 from openpyxl.styles import Font, Border, Side, Alignment, PatternFill, numbers
 from db.database import fetch_all
@@ -188,3 +188,232 @@ def _create_unit_price_sheet(wb):
         for col, v in enumerate(values, 1):
             ws.cell(row=row, column=col, value=v)
             _style_cell(ws.cell(row=row, column=col), is_number=(col >= 5))
+
+
+# ──────────────────────────────────────────────
+# AI 분석 결과 엑셀 출력
+# ──────────────────────────────────────────────
+
+_TYPE_KR = {
+    "pole": "전주", "cable": "케이블", "terminal": "단자함",
+    "house": "집/건물", "dropwire": "인입선",
+}
+_STATUS_KR = {
+    "existing": "기존", "damaged": "파손",
+    "new": "신설", "demolish": "철거",
+}
+_WORK_KR = {
+    "install": "신설", "demolish": "철거",
+    "replace": "교체", "splice": "접속",
+}
+
+
+def export_ai_analysis(filepath, elements, connections, ai_response=None, project_name=""):
+    """AI 분석 결과를 엑셀로 출력
+
+    Args:
+        filepath: 저장 경로
+        elements: list[DrawingElement] - 캔버스 요소
+        connections: list[(from_id, to_id, conn_type)] - 연결 관계
+        ai_response: dict - AI 원본 응답 (work_annotations 등)
+        project_name: str
+    """
+    wb = Workbook()
+
+    _create_elements_sheet(wb, elements, project_name)
+    _create_connections_sheet(wb, elements, connections)
+    if ai_response:
+        _create_annotations_sheet(wb, ai_response)
+    _create_summary_overview_sheet(wb, elements, connections, ai_response)
+
+    wb.save(filepath)
+
+
+def _create_elements_sheet(wb, elements, project_name):
+    """요소 목록 시트"""
+    ws = wb.active
+    ws.title = "요소 목록"
+
+    widths = {'A': 5, 'B': 12, 'C': 25, 'D': 10, 'E': 20, 'F': 10, 'G': 10}
+    for col, w in widths.items():
+        ws.column_dimensions[col].width = w
+
+    # 제목
+    ws.merge_cells('A1:G1')
+    title = ws['A1']
+    title.value = "AI 도면 분석 - 요소 목록"
+    title.font = Font(name="맑은 고딕", bold=True, size=14)
+    title.alignment = Alignment(horizontal="center")
+
+    if project_name:
+        ws.merge_cells('A2:G2')
+        ws['A2'].value = f"프로젝트: {project_name}"
+        ws['A2'].font = Font(name="맑은 고딕", size=10)
+
+    # 헤더
+    headers = ["번호", "유형", "이름/번호", "상태", "규격", "X좌표", "Y좌표"]
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=4, column=col, value=h)
+    _style_header(ws, 4, len(headers))
+
+    # 데이터
+    for i, elem in enumerate(elements):
+        row = 5 + i
+        spec = elem.properties.get("spec", "")
+        values = [
+            i + 1,
+            _TYPE_KR.get(elem.element_type, elem.element_type),
+            elem.label,
+            _STATUS_KR.get(elem.status, elem.status),
+            spec,
+            round(elem.x),
+            round(elem.y),
+        ]
+        for col, v in enumerate(values, 1):
+            cell = ws.cell(row=row, column=col, value=v)
+            _style_cell(cell, is_number=(col >= 6))
+
+    # 요약
+    summary_row = 5 + len(elements) + 1
+    ws.cell(row=summary_row, column=1, value="합계")
+    ws.cell(row=summary_row, column=1).font = Font(name="맑은 고딕", bold=True)
+
+    type_counts = {}
+    for elem in elements:
+        name = _TYPE_KR.get(elem.element_type, elem.element_type)
+        type_counts[name] = type_counts.get(name, 0) + 1
+    summary_text = ", ".join(f"{k} {v}개" for k, v in type_counts.items())
+    ws.cell(row=summary_row, column=2, value=summary_text)
+    ws.cell(row=summary_row, column=2).font = Font(name="맑은 고딕", bold=True)
+
+
+def _create_connections_sheet(wb, elements, connections):
+    """연결 관계 시트"""
+    ws = wb.create_sheet("연결 관계")
+
+    widths = {'A': 5, 'B': 12, 'C': 25, 'D': 25, 'E': 12}
+    for col, w in widths.items():
+        ws.column_dimensions[col].width = w
+
+    ws.merge_cells('A1:E1')
+    ws['A1'].value = "요소 연결 관계"
+    ws['A1'].font = Font(name="맑은 고딕", bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal="center")
+
+    headers = ["번호", "연결 유형", "시작 요소", "끝 요소", "비고"]
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=3, column=col, value=h)
+    _style_header(ws, 3, len(headers))
+
+    elem_map = {e.id: e for e in elements}
+
+    for i, (from_id, to_id, conn_type) in enumerate(connections):
+        row = 4 + i
+        from_elem = elem_map.get(from_id)
+        to_elem = elem_map.get(to_id)
+        from_name = from_elem.display_name() if from_elem else f"ID:{from_id}"
+        to_name = to_elem.display_name() if to_elem else f"ID:{to_id}"
+        conn_name = _TYPE_KR.get(conn_type, conn_type)
+
+        values = [i + 1, conn_name, from_name, to_name, ""]
+        for col, v in enumerate(values, 1):
+            cell = ws.cell(row=row, column=col, value=v)
+            _style_cell(cell)
+
+
+def _create_annotations_sheet(wb, ai_response):
+    """작업 지시사항 시트"""
+    annotations = ai_response.get("work_annotations", [])
+    if not annotations:
+        return
+
+    ws = wb.create_sheet("작업 지시")
+
+    widths = {'A': 5, 'B': 12, 'C': 40, 'D': 25}
+    for col, w in widths.items():
+        ws.column_dimensions[col].width = w
+
+    ws.merge_cells('A1:D1')
+    ws['A1'].value = "AI 감지 작업 지시사항"
+    ws['A1'].font = Font(name="맑은 고딕", bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal="center")
+
+    headers = ["번호", "작업 유형", "작업 내용", "관련 요소"]
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=3, column=col, value=h)
+    _style_header(ws, 3, len(headers))
+
+    for i, ann in enumerate(annotations):
+        row = 4 + i
+        work_type = _WORK_KR.get(ann.get("work_type", ""), ann.get("work_type", ""))
+        desc = ann.get("description", "")
+        related = ", ".join(ann.get("related_elements", []))
+
+        values = [i + 1, work_type, desc, related]
+        for col, v in enumerate(values, 1):
+            cell = ws.cell(row=row, column=col, value=v)
+            _style_cell(cell)
+
+
+def _create_summary_overview_sheet(wb, elements, connections, ai_response):
+    """종합 요약 시트"""
+    ws = wb.create_sheet("종합 요약")
+
+    ws.column_dimensions['A'].width = 20
+    ws.column_dimensions['B'].width = 15
+    ws.column_dimensions['C'].width = 30
+
+    ws.merge_cells('A1:C1')
+    ws['A1'].value = "AI 도면 분석 종합 요약"
+    ws['A1'].font = Font(name="맑은 고딕", bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal="center")
+
+    row = 3
+    section_font = Font(name="맑은 고딕", bold=True, size=11)
+    normal_font = Font(name="맑은 고딕", size=10)
+
+    # 요소 현황
+    ws.cell(row=row, column=1, value="▶ 요소 현황").font = section_font
+    row += 1
+
+    type_counts = {}
+    status_counts = {}
+    for elem in elements:
+        tname = _TYPE_KR.get(elem.element_type, elem.element_type)
+        type_counts[tname] = type_counts.get(tname, 0) + 1
+        sname = _STATUS_KR.get(elem.status, elem.status)
+        status_counts[sname] = status_counts.get(sname, 0) + 1
+
+    for name, count in type_counts.items():
+        ws.cell(row=row, column=1, value=f"  {name}").font = normal_font
+        ws.cell(row=row, column=2, value=f"{count}개").font = normal_font
+        row += 1
+
+    row += 1
+    ws.cell(row=row, column=1, value="▶ 상태별 현황").font = section_font
+    row += 1
+
+    for name, count in status_counts.items():
+        ws.cell(row=row, column=1, value=f"  {name}").font = normal_font
+        ws.cell(row=row, column=2, value=f"{count}개").font = normal_font
+        row += 1
+
+    row += 1
+    ws.cell(row=row, column=1, value="▶ 연결 현황").font = section_font
+    row += 1
+    ws.cell(row=row, column=1, value=f"  총 연결 수").font = normal_font
+    ws.cell(row=row, column=2, value=f"{len(connections)}개").font = normal_font
+
+    # 작업 지시 요약
+    if ai_response:
+        annotations = ai_response.get("work_annotations", [])
+        if annotations:
+            row += 2
+            ws.cell(row=row, column=1, value="▶ 작업 지시 요약").font = section_font
+            row += 1
+            for ann in annotations:
+                desc = ann.get("description", "")
+                wtype = _WORK_KR.get(ann.get("work_type", ""), "")
+                ws.cell(row=row, column=1, value=f"  [{wtype}]").font = normal_font
+                ws.cell(row=row, column=2, value=desc).font = normal_font
+                row += 1

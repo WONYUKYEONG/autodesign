@@ -1,5 +1,6 @@
 """도구모음 바"""
 import tkinter as tk
+from tkinter import ttk
 
 
 class Toolbar(tk.Frame):
@@ -13,7 +14,7 @@ class Toolbar(tk.Frame):
         ("delete", "삭제", "X_cursor"),
     ]
 
-    def __init__(self, parent, on_tool_change=None):
+    def __init__(self, parent, on_tool_change=None, on_analyze=None):
         super().__init__(parent, bd=1, relief=tk.RAISED)
         self.current_tool = tk.StringVar(value="select")
         self.on_tool_change = on_tool_change
@@ -27,6 +28,17 @@ class Toolbar(tk.Frame):
                 command=lambda t=tool_id: self._tool_changed(t),
             )
             btn.pack(side=tk.LEFT, padx=2, pady=2)
+
+        # 구분선
+        ttk.Separator(self, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=2)
+
+        # AI 사진 분석 버튼
+        self.analyze_btn = tk.Button(
+            self, text="📷 사진 분석", command=on_analyze,
+            font=("맑은 고딕", 10, "bold"), bg="#FF8C00", fg="white",
+            relief=tk.RAISED, padx=8,
+        )
+        self.analyze_btn.pack(side=tk.LEFT, padx=4, pady=2)
 
     def _tool_changed(self, tool_id):
         if self.on_tool_change:
